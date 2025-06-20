@@ -52,26 +52,39 @@ class LSegModule(LSegmentationModule):
         self.train_transform = transforms.Compose(train_transform)
         self.val_transform = transforms.Compose(val_transform)
 
-        self.trainset = self.get_trainset(
-            dataset,
-            augment=kwargs["augment"],
-            base_size=self.base_size,
-            crop_size=self.crop_size,
-        )
-        
-        self.valset = self.get_valset(
-            dataset,
-            augment=kwargs["augment"],
-            base_size=self.base_size,
-            crop_size=self.crop_size,
-        )
+        # Bypass dataset loading for folder-based inference
+        if dataset in ["lerf", "dummy", "folder"]:
+            self.trainset = None
+            self.valset = None
+            labels = []
+        else:
+            self.trainset = self.get_trainset(
+                dataset,
+                augment=kwargs["augment"],
+                base_size=self.base_size,
+                crop_size=self.crop_size,
+            )
+            self.valset = self.get_valset(
+                dataset,
+                augment=kwargs["augment"],
+                base_size=self.base_size,
+                crop_size=self.crop_size,
+            )
+            labels = self.get_labels('ade20k')
 
         use_batchnorm = (
             (not kwargs["no_batchnorm"]) if "no_batchnorm" in kwargs else True
         )
         # print(kwargs)
 
-        labels = self.get_labels('ade20k')
+        # Use dummy labels for folder-based inference
+        if dataset in ["lerf", "dummy", "folder"]:
+            labels = ["class%d" % i for i in range(150)]
+            self.num_classes = len(labels)
+            self.nclass = len(labels)
+        else:
+            self.nclass = len(labels)
+            self.num_classes = len(labels)
 
         self.net = LSegNet(
             labels=labels,

@@ -30,7 +30,7 @@ import matplotlib.colors as mplc
 import matplotlib.figure as mplfigure
 import matplotlib.patches as mpatches
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-from data import get_dataset
+from data import get_custom_dataset as get_dataset
 from additional_utils.encoding_models import MultiEvalModule as LSeg_MultiEvalModule
 import torchvision.transforms as transforms
 
@@ -403,10 +403,60 @@ def test(args):
             if not os.path.exists(outdir):
                 os.makedirs(outdir)
 
-            for predict, impath in zip(predicts, dst):
+            for idx, (predict, impath) in enumerate(zip(predicts, dst)):
                 mask = utils.get_mask_pallete(predict, args.dataset)
-                outname = os.path.splitext(impath)[0] + ".png"
-                mask.save(os.path.join(outdir, outname))
+                # If impath is a string, use it; otherwise, use a fallback name
+                if isinstance(impath, str):
+                    input_filename = os.path.basename(impath)
+                    base_name, _ = os.path.splitext(input_filename)
+                else:
+                    base_name = f"output_{i}_{idx}"
+                    input_filename = base_name
+                mask_name = f"{input_filename}_seg.png"
+                overlay_name = f"{input_filename}_overlay.png"
+                mask.save(os.path.join(outdir, mask_name))
+
+                # --- Overlay logic ---
+                # Load original image (always try to show something)
+                if isinstance(impath, str) and os.path.exists(impath):
+                    orig_img = Image.open(impath).convert("RGBA")
+                else:
+                    # Create a blank placeholder if original image is missing
+                    orig_img = Image.new("RGBA", mask.size, (128, 128, 128, 255))
+                # Convert mask to RGBA
+                mask_rgba = mask.convert("RGBA")
+                # Blend images
+                overlay = Image.blend(orig_img, mask_rgba, alpha=0.5)
+                # Add legend next to the image using matplotlib (side-by-side)
+                fig, (ax_img, ax_legend) = plt.subplots(1, 2, figsize=(16, 8), gridspec_kw={'width_ratios': [4, 1]})
+                ax_img.imshow(overlay)
+                ax_img.set_title("Overlay (Input + Segmentation)")
+                ax_img.axis('off')
+                # Get legend info if available
+                legend_drawn = False
+                palette = mask.getpalette() if hasattr(mask, 'getpalette') else None
+                labels = getattr(testset, 'classes', None)
+                if labels is not None and palette is not None:
+                    unique_classes = np.unique(np.array(mask))
+                    patches = []
+                    for c in unique_classes:
+                        if c < 0 or c >= len(labels):
+                            continue
+                        color = tuple(np.array(palette[c*3:c*3+3])/255.0)
+                        patches.append(mpatches.Patch(color=color, label=f"{labels[c]} ({c})"))
+                    if patches:
+                        leg = ax_legend.legend(handles=patches, loc='center left', fontsize='medium', frameon=True, borderaxespad=0.5)
+                        ax_legend.set_axis_off()
+                        legend_drawn = True
+                if not legend_drawn:
+                    ax_legend.text(0.5, 0.5, 'No legend available', ha='center', va='center', fontsize=14)
+                    ax_legend.set_axis_off()
+                plt.tight_layout()
+                overlay_dir = os.path.join("output", "overlay_results")
+                os.makedirs(overlay_dir, exist_ok=True)
+                overlay_path = os.path.join(overlay_dir, overlay_name)
+                fig.savefig(overlay_path, bbox_inches='tight', dpi=150)
+                plt.close(fig)
 
     if args.eval:
         each_classes_iou = per_class_iou/cnt
