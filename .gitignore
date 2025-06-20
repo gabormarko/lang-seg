@@ -140,3 +140,4 @@ checkpoints/
 *.npy
 *.h5
 output/
+ADEChallengeData2016/
