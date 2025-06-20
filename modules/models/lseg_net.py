@@ -120,6 +120,7 @@ class LSeg(BaseModel):
             "clip_vitl16_384": [5, 11, 17, 23],
             "clipRN50x16_vitl16_384": [5, 11, 17, 23],
             "clip_vitb32_384": [2, 5, 8, 11],
+            "clip_vitb16_384": [2, 5, 8, 11],  # Added support for vitb16
         }
 
         # Instantiate backbone and reassemble blocks
@@ -226,6 +227,5 @@ class LSegNet(LSeg):
             self.load(path)
 
 
-    
-        
-    
+
+

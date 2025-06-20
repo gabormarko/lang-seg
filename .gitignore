@@ -129,3 +129,14 @@ dmypy.json
 .pyre/
 checkpoints/
 logs/
+
+# In lang-seg/.gitignore
+data/
+datasets/
+checkpoints/
+*.pth
+*.pt
+*.npz
+*.npy
+*.h5
+output/

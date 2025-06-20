@@ -50,6 +50,16 @@ def _make_encoder(
         scratch = _make_scratch(
             [96, 192, 384, 768], features, groups=groups, expand=expand
         ) 
+    elif backbone == "clip_vitb16_384":
+        from .lseg_vit import _make_pretrained_clip_vitb16_384
+        clip_pretrained, pretrained = _make_pretrained_clip_vitb16_384(
+            use_pretrained,
+            hooks=hooks,
+            use_readout=use_readout,
+        )
+        scratch = _make_scratch(
+            [96, 192, 384, 768], features, groups=groups, expand=expand
+        )
     else:
         print(f"Backbone '{backbone}' not implemented")
         assert False

@@ -382,5 +382,4 @@ if uploaded_file is not None:
 
     #st.image([image,seg], width=700, caption=["Input image", "Segmentation"])
     st.pyplot(fig)
-    
-    
+
