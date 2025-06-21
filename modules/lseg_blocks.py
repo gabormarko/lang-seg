@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from .lseg_vit import (
+from models.lseg_vit import (
     _make_pretrained_clip_vitl16_384,
     _make_pretrained_clip_vitb32_384,
     _make_pretrained_clip_vitb16_384,  # ensure this is imported
