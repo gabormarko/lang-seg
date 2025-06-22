@@ -28,6 +28,16 @@ def get_new_pallete(num_cls):
     return pallete
 
 def get_new_mask_pallete(npimg, new_palette, out_label_flag=False, labels=None):
+    # Debug: print unique values and max value in the mask
+    print('DEBUG: unique mask values:', np.unique(npimg))
+    print('DEBUG: max mask value:', np.max(npimg))
+    # Ensure palette is a flat list of ints and pad/crop to 768
+    new_palette = list(map(int, new_palette))
+    if len(new_palette) < 768:
+        new_palette = new_palette + [0] * (768 - len(new_palette))
+    else:
+        new_palette = new_palette[:768]
+    assert len(new_palette) == 768, f'Palette length is {len(new_palette)}, should be 768'
     out_img = Image.fromarray(npimg.squeeze().astype('uint8'))
     out_img.putpalette(new_palette)
     patches = []
