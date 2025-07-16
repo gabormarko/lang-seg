@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 
 # --- EDIT THESE VARIABLES FOR YOUR DATASET ---
 INPUT_DIR="/home/neural_fields/Unified-Lift-Gabor/data/scannetpp/officescene/images"
-OUTPUT_DIR="output/scannetpp_officescene_results"
+OUTPUT_DIR="output/scannetpp_officescene_LSEG_results"
 
 # ADE20K labels
 # LABELS="wall building sky floor tree ceiling road bed windowpane grass
@@ -28,7 +28,7 @@ OUTPUT_DIR="output/scannetpp_officescene_results"
 
 
 # ScanNetpp labels (from instance_classes.txt)
-LABELS=$(paste -sd' ' /home/neural_fields/Unified-Lift-Gabor/data/scannetpp/officescene/top100.txt)
+LABELS=$(paste -sd' ' /home/neural_fields/Unified-Lift-Gabor/data/scannetpp/top100.txt)
 
 # --------------------------------------------
 

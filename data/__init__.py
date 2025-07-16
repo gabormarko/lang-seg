@@ -6,7 +6,7 @@ import torch
 import torch.utils.data
 import torchvision.transforms as torch_transforms
 import encoding.datasets as enc_ds
-from .lerf import LerfSegmentation
+# from .lerf import LerfSegmentation
 
 encoding_datasets = {
     x: functools.partial(enc_ds.get_dataset, x)
