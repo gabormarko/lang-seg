@@ -102,6 +102,27 @@ def _make_fusion_block(features, use_bn):
     )
 
 class LSeg(BaseModel):
+    def extract_features(self, x):
+        """
+        Extract per-pixel feature embeddings before projection to text space.
+        Returns tensor of shape [B, out_c, H, W].
+        """
+        if self.channels_last == True:
+            x.contiguous(memory_format=torch.channels_last)
+
+        # Forward through backbone and refinenet blocks
+        layer_1, layer_2, layer_3, layer_4 = forward_vit(self.pretrained, x)
+        layer_1_rn = self.scratch.layer1_rn(layer_1)
+        layer_2_rn = self.scratch.layer2_rn(layer_2)
+        layer_3_rn = self.scratch.layer3_rn(layer_3)
+        layer_4_rn = self.scratch.layer4_rn(layer_4)
+        path_4 = self.scratch.refinenet4(layer_4_rn)
+        path_3 = self.scratch.refinenet3(path_4, layer_3_rn)
+        path_2 = self.scratch.refinenet2(path_3, layer_2_rn)
+        path_1 = self.scratch.refinenet1(path_2, layer_1_rn)
+        image_features = self.scratch.head1(path_1)  # [B, out_c, H, W]
+        print(f"[DEBUG] extract_features: image_features shape: {image_features.shape}")
+        return image_features
     def __init__(
         self,
         head,
