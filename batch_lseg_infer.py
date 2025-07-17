@@ -86,8 +86,17 @@ def main():
     head1_keys = [k for k in state_dict.keys() if "head1.weight" in k]
     if head1_keys:
         head1_shape = state_dict[head1_keys[0]].shape
+        feature_dim = head1_shape[0]
         print(f"[INFO] Checkpoint head1.weight shape: {head1_shape} (out_c, in_c, 1, 1)")
-        print(f"[INFO] This means the checkpoint was trained with output feature dim: {head1_shape[0]}")
+        print(f"[INFO] This means the checkpoint was trained with output feature dim: {feature_dim}")
+        # Print backbone and recommended CLIP model
+        print(f"[INFO] Backbone used for feature extraction: {args.backbone}")
+        if feature_dim == 512:
+            print('[INFO] Recommended CLIP model for open-vocab segmentation: ViT-L/16 - CLIP ViT-B/32')
+        elif feature_dim == 768:
+            print('[INFO] Recommended CLIP model for open-vocab segmentation: ViT-L/14')
+        else:
+            print(f'[WARNING] Unusual feature dimension {feature_dim}. Please check your backbone and CLIP model compatibility!')
     else:
         print("[WARNING] Could not find head1.weight in checkpoint. Cannot determine feature dim.")
 
@@ -142,25 +151,25 @@ def main():
     os.makedirs(features_dir, exist_ok=True)
 
     # Try to load mean/std from mean_std.txt in input_dir    
-    mean_std_path = os.path.join(input_dir, 'mean_std.txt')
-    print(f"[DEBUG] Looking for mean_std.txt at: {mean_std_path}")
-    if os.path.exists(mean_std_path):
-        arr = np.loadtxt(mean_std_path)
-        mean = arr[0]
-        std = arr[1]
-        print(f"[INFO] Using dataset mean: {mean}, std: {std} from {mean_std_path}")
-        mean = mean.tolist()
-        std = std.tolist()
-    else:
-        mean = [0.5, 0.5, 0.5]
-        std = [0.5, 0.5, 0.5]
-        print(f"[INFO] Using default mean/std: {mean}, {std}")
+    #mean_std_path = os.path.join(input_dir, 'mean_std.txt')
+    #print(f"[DEBUG] Looking for mean_std.txt at: {mean_std_path}")
+    #if os.path.exists(mean_std_path):
+    #    arr = np.loadtxt(mean_std_path)
+    #    mean = arr[0]
+    #    std = arr[1]
+    #    print(f"[INFO] Using dataset mean: {mean}, std: {std} from {mean_std_path}")
+    #    mean = mean.tolist()
+    #    std = std.tolist()
+    #else:
+    mean = [0.5, 0.5, 0.5]
+    std = [0.5, 0.5, 0.5]
+    print(f"[INFO] Using default mean/std: {mean}, {std}")
 
     # Use high-res, aspect-ratio preserving transform with dynamic padding
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(mean, std),
-        transforms.Resize(360),  # shorter side to 360, keeps aspect ratio
+        transforms.Resize(640),  # shorter side to 360, keeps aspect ratio
         PadToMultipleOf32(),     # pad to next multiple of 32 for both H and W
     ])
 

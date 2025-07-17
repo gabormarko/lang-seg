@@ -37,7 +37,7 @@ class LSegModule(LSegmentationModule):
         norm_mean= [0.5, 0.5, 0.5]
         norm_std = [0.5, 0.5, 0.5]
 
-        #print('** Use norm {}, {} as the mean and std **'.format(norm_mean, norm_std))
+        print('** Use norm {}, {} as the mean and std **'.format(norm_mean, norm_std))
 
         train_transform = [
             transforms.ToTensor(),
