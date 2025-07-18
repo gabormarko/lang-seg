@@ -86,17 +86,8 @@ def main():
     head1_keys = [k for k in state_dict.keys() if "head1.weight" in k]
     if head1_keys:
         head1_shape = state_dict[head1_keys[0]].shape
-        feature_dim = head1_shape[0]
         print(f"[INFO] Checkpoint head1.weight shape: {head1_shape} (out_c, in_c, 1, 1)")
-        print(f"[INFO] This means the checkpoint was trained with output feature dim: {feature_dim}")
-        # Print backbone and recommended CLIP model
-        print(f"[INFO] Backbone used for feature extraction: {args.backbone}")
-        if feature_dim == 512:
-            print('[INFO] Recommended CLIP model for open-vocab segmentation: ViT-L/16 - CLIP ViT-B/32')
-        elif feature_dim == 768:
-            print('[INFO] Recommended CLIP model for open-vocab segmentation: ViT-L/14')
-        else:
-            print(f'[WARNING] Unusual feature dimension {feature_dim}. Please check your backbone and CLIP model compatibility!')
+        print(f"[INFO] This means the checkpoint was trained with output feature dim: {head1_shape[0]}")
     else:
         print("[WARNING] Could not find head1.weight in checkpoint. Cannot determine feature dim.")
 
@@ -165,12 +156,11 @@ def main():
     std = [0.5, 0.5, 0.5]
     print(f"[INFO] Using default mean/std: {mean}, {std}")
 
-    # Use high-res, aspect-ratio preserving transform with dynamic padding
+    # Harmonized preprocessing: fixed size resize to [360, 480], no aspect ratio preservation, no padding
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(mean, std),
-        transforms.Resize(640),  # shorter side to 360, keeps aspect ratio
-        PadToMultipleOf32(),     # pad to next multiple of 32 for both H and W
+        transforms.Resize([320, 480]),  # fixed size to match lseg_app.py
     ])
 
     # Always iterate over images in input_dir (no dataloader)
@@ -185,6 +175,18 @@ def main():
         print(f"[DEBUG] Input image tensor shape: {image.shape}")
         pimage = image.unsqueeze(0) if isinstance(image, torch.Tensor) else transform(np.array(image)).unsqueeze(0)
         print(f"[DEBUG] Model input batch shape: {pimage.shape}")
+        print(f"[DEBUG] Label list used for extraction: {labels}")
+        # Save the preprocessed image used for feature extraction
+        # Undo normalization for visualization
+        preproc_img = image.clone()
+        for t, m, s in zip(preproc_img, mean, std):
+            t.mul_(s).add_(m)
+        preproc_img = (preproc_img * 255).clamp(0, 255).byte().permute(1,2,0).cpu().numpy()
+        print(f"[DEBUG] Preprocessed image shape: {preproc_img.shape}")
+        preproc_pil = Image.fromarray(preproc_img)
+        preproc_pil_path = os.path.join(features_dir, base_name + '_preproc.png')
+        preproc_pil.save(preproc_pil_path)
+        print(f"[DEBUG] Saved preprocessed image to {preproc_pil_path}")
         with torch.no_grad():
             if args.extract_features:
                 # Extract per-pixel features
@@ -192,12 +194,13 @@ def main():
                 pimage = pimage.to(device)
                 features = model.net.extract_features(pimage)
                 print(f"[DEBUG] Extracted features shape: {features.shape}")
+                print(f"[DEBUG] Features file path: {os.path.join(features_dir, base_name + '.JPG.npy')}")
                 if features.shape[1] != 512:
                     print(f"[WARNING] Feature dimension is {features.shape[1]}, expected 256. Check model weights and num_features setting.")
                 else:
                     print(f"[INFO] Feature dimension confirmed as 512.")
                 features_np = features.squeeze(0).cpu().numpy().astype(np.float16)  # [C, H, W] as float16
-                npy_path = os.path.join(features_dir, base_name + '_features.npy')
+                npy_path = os.path.join(features_dir, base_name + '.JPG.npy')
                 np.save(npy_path, features_np)
                 print(f"[DEBUG] Saved features as float16 to {npy_path}")
             else:

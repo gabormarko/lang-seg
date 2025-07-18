@@ -345,24 +345,24 @@ st.write("The labels are", input_labels)
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
+    print(f"[DEBUG] Uploaded image shape: {image.size}")
     pimage = lseg_transform(np.array(image)).unsqueeze(0)
+    print(f"[DEBUG] Preprocessed image tensor shape: {pimage.shape}")
 
     labels = []
     for label in input_labels.split(","):
         labels.append(label.strip())
-    
+    print(f"[DEBUG] Label list used in app: {labels}")
+
     with torch.no_grad():
         outputs = lseg_model.parallel_forward(pimage, labels)
-        
-        predicts = [
-            torch.max(output, 1)[1].cpu().numpy()
-            for output in outputs
-        ]
-        
+        predicts = [torch.max(output, 1)[1].cpu().numpy() for output in outputs]
+    print(f"[DEBUG] Segmentation mask shape: {predicts[0].shape}")
+
     image = pimage[0].permute(1,2,0)
     image = image * 0.5 + 0.5
     image = Image.fromarray(np.uint8(255*image)).convert("RGBA")
-    
+
     pred = predicts[0]
     new_palette = get_new_pallete(len(labels))
     mask, patches = get_new_mask_pallete(pred, new_palette, out_label_flag=True, labels=labels)

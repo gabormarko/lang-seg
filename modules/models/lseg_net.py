@@ -102,9 +102,38 @@ def _make_fusion_block(features, use_bn):
     )
 
 class LSeg(BaseModel):
+    def project_features_to_labels(self, image_features, labelset=None, device=None):
+        """
+        Post-process extracted features to segmentation output, replicating forward logic.
+        image_features: [B, out_c, H, W] (output of extract_features)
+        labelset: list of label strings or None (use self.text if None)
+        device: torch device (optional)
+        Returns: segmentation output [B, num_labels, H, W]
+        """
+        if device is None:
+            device = image_features.device
+        if labelset is None or labelset == '':
+            text = self.text
+        else:
+            text = clip.tokenize(labelset)
+        text = text.to(device)
+        self.logit_scale = self.logit_scale.to(device)
+        text_features = self.clip_pretrained.encode_text(text)
+        imshape = image_features.shape
+        image_features = image_features.permute(0,2,3,1).reshape(-1, self.out_c)
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+        logits_per_image = self.logit_scale * image_features.half() @ text_features.t()
+        out = logits_per_image.float().view(imshape[0], imshape[2], imshape[3], -1).permute(0,3,1,2)
+        if self.arch_option in [1, 2]:
+            for _ in range(self.block_depth - 1):
+                out = self.scratch.head_block(out)
+            out = self.scratch.head_block(out, False)
+        out = self.scratch.output_conv(out)
+        return out
     def extract_features(self, x):
         """
-        Extract per-pixel feature embeddings before projection to text space.
+        Extract per-pixel feature embeddings at input image resolution before projection to text space.
         Returns tensor of shape [B, out_c, H, W].
         """
         if self.channels_last == True:
@@ -120,7 +149,12 @@ class LSeg(BaseModel):
         path_3 = self.scratch.refinenet3(path_4, layer_3_rn)
         path_2 = self.scratch.refinenet2(path_3, layer_2_rn)
         path_1 = self.scratch.refinenet1(path_2, layer_1_rn)
-        image_features = self.scratch.head1(path_1)  # [B, out_c, H, W]
+        image_features = self.scratch.head1(path_1)  # [B, out_c, H/2, W/2]
+        # Upsample to input image size exactly
+        #input_h, input_w = x.shape[2], x.shape[3]
+        #image_features = torch.nn.functional.interpolate(
+        #    image_features, size=(input_h, input_w), mode="bilinear", align_corners=False
+        #)
         print(f"[DEBUG] extract_features: image_features shape: {image_features.shape}")
         return image_features
     def __init__(

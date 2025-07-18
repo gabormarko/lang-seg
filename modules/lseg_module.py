@@ -52,8 +52,9 @@ class LSegModule(LSegmentationModule):
         self.train_transform = transforms.Compose(train_transform)
         self.val_transform = transforms.Compose(val_transform)
 
-        # Bypass dataset loading for folder-based inference
-        if dataset in ["lerf", "dummy", "folder"]:
+        # Bypass dataset loading for visualization/inference if 'no_dataset' is set in kwargs
+        no_dataset = kwargs.pop('no_dataset', False)
+        if no_dataset or dataset in ["lerf", "dummy", "folder"]:
             self.trainset = None
             self.valset = None
             labels = []
@@ -71,6 +72,7 @@ class LSegModule(LSegmentationModule):
                 crop_size=self.crop_size,
             )
             labels = self.get_labels('ade20k')
+    # No custom load_from_checkpoint; rely on PyTorch Lightning's default
 
         use_batchnorm = (
             (not kwargs["no_batchnorm"]) if "no_batchnorm" in kwargs else True

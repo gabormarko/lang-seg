@@ -17,34 +17,72 @@ def main():
 
     # Load per-pixel features
     features = np.load(args.features_path)  # [C, H, W]
+    print(f"[DEBUG] Loaded features from {args.features_path}, shape: {features.shape}, dtype: {features.dtype}")
     if features.dtype == np.float16:
         features = features.astype(np.float32)
     features = torch.from_numpy(features)  # [C, H, W]
     C, H, W = features.shape
+    print(f"[DEBUG] Features tensor shape after conversion: {features.shape}")
 
-    # Load CLIP model
+    from modules.lseg_module import LSegModule
+    checkpoint_path = 'checkpoints/demo_e200.ckpt'
+    module = LSegModule.load_from_checkpoint(
+        checkpoint_path=checkpoint_path,
+        data_path='/tmp',
+        dataset='lerf',
+        backbone='clip_vitl16_384',
+        aux=False,
+        num_features=256,
+        aux_weight=0,
+        se_loss=False,
+        se_weight=0,
+        base_lr=0,
+        batch_size=1,
+        max_epochs=0,
+        ignore_index=255,
+        dropout=0.0,
+        scale_inv=False,
+        augment=False,
+        no_batchnorm=False,
+        widehead=True,
+        widehead_hr=False,
+        map_locatin="cpu",
+        arch_option=0,
+        block_depth=0,
+        activation='lrelu',
+    )
+    # Use .net if available, else use module directly
+    try:
+        from encoding.models.sseg import BaseNet
+        if hasattr(module, 'net') and isinstance(module.net, BaseNet):
+            model = module.net
+        else:
+            model = module
+    except ImportError:
+        model = module
+    model = model.eval().cpu()
+
+    labels = args.labels
+    print(f"[DEBUG] Label list used for visualization: {labels}")
+    features = features.unsqueeze(0)  # [1, C, H, W]
+    print(f"[DEBUG] Features shape before model: {features.shape}")
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    clip_model, preprocess = clip.load(args.clip_model, device=device)
-
-    # Encode text labels
-    text_tokens = clip.tokenize(args.labels).to(device)
+    model = model.to(device)
+    features = features.to(device)
     with torch.no_grad():
-        text_features = clip_model.encode_text(text_tokens)  # [num_labels, D]
-        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-
-    # Prepare image features
-    features = features.permute(1, 2, 0).reshape(-1, C).to(device)  # [H*W, C]
-    features = features / features.norm(dim=-1, keepdim=True)
-
-    # Ensure both features and text_features are float32 for matmul
-    features = features.float()
-    text_features = text_features.float()
-
-    # Compute similarity
-    similarity = features @ text_features.T  # [H*W, num_labels]
-    pred = similarity.argmax(dim=1).reshape(H, W).cpu().numpy()  # [H, W]
+        # Use the model's post-processing to get segmentation from extracted features
+        if hasattr(model, 'net') and hasattr(model.net, 'project_features_to_labels'):
+            seg_output = model.net.project_features_to_labels(features, labelset=labels, device=device)
+        elif hasattr(model, 'project_features_to_labels'):
+            seg_output = model.project_features_to_labels(features, labelset=labels, device=device)
+        else:
+            raise AttributeError("Neither model nor model.net has project_features_to_labels method.")
+        print(f"[DEBUG] seg_output shape: {seg_output.shape if hasattr(seg_output, 'shape') else [o.shape for o in seg_output]}")
+        pred = torch.argmax(seg_output[0], dim=0).cpu().numpy()  # [H, W]
+        print(f"[DEBUG] Predicted mask shape: {pred.shape}")
 
     # Visualization
+
     import os
     import matplotlib.patches as mpatches
 
@@ -68,30 +106,95 @@ def main():
     else:
         output_path = get_default_filename()
 
-    # Overlay visualization with legend
-    fig, ax = plt.subplots(figsize=(8, 8))
-    if args.original_image:
-        orig = Image.open(args.original_image).convert('RGB').resize((W, H), resample=Image.BILINEAR)
-        ax.imshow(orig)
-        im = ax.imshow(pred, cmap='tab10', alpha=0.5, vmin=0, vmax=len(args.labels)-1)
-    else:
-        im = ax.imshow(pred, cmap='tab10', vmin=0, vmax=len(args.labels)-1)
-    ax.set_title(f"Open-vocab Segmentation: {', '.join(args.labels)}")
-    ax.axis('off')
+    # device = "cuda" if torch.cuda.is_available() else "cpu"
+    # clip_model, preprocess = clip.load(args.clip_model, device=device)
+    # Use lseg_app.py palette and legend logic
+    def get_new_pallete(num_cls):
+        n = num_cls
+        pallete = [0]*(n*3)
+        for j in range(0,n):
+            lab = j
+            pallete[j*3+0] = 0
+            pallete[j*3+1] = 0
+            pallete[j*3+2] = 0
+            i = 0
+            while (lab > 0):
+                pallete[j*3+0] |= (((lab >> 0) & 1) << (7-i))
+                pallete[j*3+1] |= (((lab >> 1) & 1) << (7-i))
+                pallete[j*3+2] |= (((lab >> 2) & 1) << (7-i))
+                i = i + 1
+                lab >>= 3
+        return pallete
 
-    # Add legend for labels
-    handles = [mpatches.Patch(color=plt.cm.tab10(i), label=label) for i, label in enumerate(args.labels)]
-    ax.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0., title="Labels")
+    def get_new_mask_pallete(npimg, new_palette, out_label_flag=False, labels=None):
+        out_img = Image.fromarray(npimg.squeeze().astype('uint8'))
+        out_img.putpalette(new_palette)
+        patches = []
+        if out_label_flag:
+            assert labels is not None
+            u_index = np.unique(npimg)
+            for i, index in enumerate(u_index):
+                label = labels[index]
+                cur_color = [new_palette[index * 3] / 255.0, new_palette[index * 3 + 1] / 255.0, new_palette[index * 3 + 2] / 255.0]
+                red_patch = mpatches.Patch(color=cur_color, label=label)
+                patches.append(red_patch)
+        return out_img, patches
+
+    # Upsample mask if needed
+    if args.original_image:
+        orig = Image.open(args.original_image).convert('RGB')
+        orig_w, orig_h = orig.size
+        print(f"[DEBUG] Loaded original image from {args.original_image}, shape: {orig.size}")
+        print(f"[DEBUG] Model mask shape before upsampling: {pred.shape}")
+        import torch.nn.functional as F
+        pred_tensor = torch.from_numpy(pred).unsqueeze(0).unsqueeze(0).float()
+        print(f"[DEBUG] pred_tensor shape for upsampling: {pred_tensor.shape}")
+        up_pred = F.interpolate(pred_tensor, size=(orig_h, orig_w), mode='nearest')[0,0].numpy().astype(int)
+        print(f"[DEBUG] Upsampled mask shape: {up_pred.shape}")
+        mask_for_vis = up_pred
+        overlay_img = orig
+    elif os.path.exists(args.features_path.replace('.JPG.npy', '_preproc.png')):
+        preproc_img_path = args.features_path.replace('.JPG.npy', '_preproc.png')
+        preproc_img = Image.open(preproc_img_path).convert('RGB')
+        print(f"[DEBUG] Loaded preprocessed image from {preproc_img_path}, shape: {preproc_img.size}")
+        print(f"[DEBUG] Model mask shape for preproc overlay: {pred.shape}")
+        mask_for_vis = pred
+        overlay_img = preproc_img
+    else:
+        print(f"[DEBUG] No overlay image used, only mask.")
+        print(f"[DEBUG] Model mask shape for mask-only: {pred.shape}")
+        mask_for_vis = pred
+        overlay_img = None
+
+    new_palette = get_new_pallete(len(labels))
+    mask_img, legend_patches = get_new_mask_pallete(mask_for_vis, new_palette, out_label_flag=True, labels=labels)
+    seg_rgba = mask_img.convert("RGBA")
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    if overlay_img is not None:
+        ax.imshow(overlay_img)
+        ax.imshow(seg_rgba, alpha=0.7)
+    else:
+        ax.imshow(seg_rgba)
+    # Show only top 5 labels in title, then '...'
+    if len(labels) > 5:
+        title_labels = ', '.join(labels[:5]) + ', ...'
+    else:
+        title_labels = ', '.join(labels)
+    ax.set_title(f"Open-vocab Segmentation: {title_labels}")
+    ax.axis('off')
+    ax.legend(handles=legend_patches, bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0., title="Labels")
+
 
     fig.tight_layout()
     fig.savefig(output_path, bbox_inches='tight', dpi=150)
     print(f"Saved segmentation visualization to {output_path}")
     plt.close(fig)
 
-    # Save mask-only image (no overlay, no axis, no title, no legend)
+    # Save mask-only image (no overlay, no axis, no title, no legend), using palette colors
     mask_only_path = output_path.replace('.png', '_mask.png')
     fig2, ax2 = plt.subplots(figsize=(8, 8))
-    ax2.imshow(pred, cmap='tab10', vmin=0, vmax=len(args.labels)-1)
+    ax2.imshow(mask_img.convert("RGBA"))
     ax2.axis('off')
     fig2.subplots_adjust(left=0, right=1, top=1, bottom=0)
     fig2.savefig(mask_only_path, bbox_inches='tight', pad_inches=0, dpi=150)
