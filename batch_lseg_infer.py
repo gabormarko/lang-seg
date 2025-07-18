@@ -183,10 +183,10 @@ def main():
             t.mul_(s).add_(m)
         preproc_img = (preproc_img * 255).clamp(0, 255).byte().permute(1,2,0).cpu().numpy()
         print(f"[DEBUG] Preprocessed image shape: {preproc_img.shape}")
-        preproc_pil = Image.fromarray(preproc_img)
-        preproc_pil_path = os.path.join(features_dir, base_name + '_preproc.png')
-        preproc_pil.save(preproc_pil_path)
-        print(f"[DEBUG] Saved preprocessed image to {preproc_pil_path}")
+        #preproc_pil = Image.fromarray(preproc_img)
+        #preproc_pil_path = os.path.join(features_dir, base_name + '_preproc.png')
+        #preproc_pil.save(preproc_pil_path)
+        #print(f"[DEBUG] Saved preprocessed image to {preproc_pil_path}")
         with torch.no_grad():
             if args.extract_features:
                 # Extract per-pixel features
