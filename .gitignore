@@ -141,5 +141,6 @@ checkpoints/
 *.h5
 output/
 ADEChallengeData2016/
+PyTorch-Encoding/
 
 /home/neural_fields/Unified-Lift-Gabor/lang-seg/PyTorch-Encoding
