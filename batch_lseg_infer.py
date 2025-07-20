@@ -203,11 +203,40 @@ def main():
                 npy_path = os.path.join(features_dir, base_name + '.JPG.npy')
                 np.save(npy_path, features_np)
                 print(f"[DEBUG] Saved features as float16 to {npy_path}")
+                # --- Logit min/max/mean/std analysis for extracted features ---
+                # If features are logits, print stats per channel
+                """
+                if features_np.ndim == 3:
+                    num_channels = features_np.shape[0]
+                    h, w = features_np.shape[1], features_np.shape[2]
+                    for i in range(num_channels):
+                        channel_data = features_np[i, :, :]
+                        print(f"[FEATURE RANGE] Channel {i}: min={channel_data.min():.4f}, max={channel_data.max():.4f}, mean={channel_data.mean():.4f}, std={channel_data.std():.4f}")
+                    # Print one random feature vector (all channels) for a random pixel
+                    rand_h = np.random.randint(0, h)
+                    rand_w = np.random.randint(0, w)
+                    rand_feat_vec = features_np[:, rand_h, rand_w]
+                    print(f"[FEATURE SAMPLE] Random pixel ({rand_h},{rand_w}): features={rand_feat_vec}")
+                """
             else:
                 outputs = evaluator.parallel_forward(pimage, labels)
                 print(f"[DEBUG] Model outputs: {[o.shape for o in outputs]}")
                 if len(outputs) > 0:
                     print(f"[DEBUG] Output feature vector dimension: {outputs[0].shape[1]}")
+                    # --- Logit min/max/mean/std analysis ---
+                    logits = outputs[0].cpu().numpy()  # shape: [batch, num_classes, H, W]
+                    if logits.shape[0] == 1:
+                        logits = logits[0]  # shape: [num_classes, H, W]
+                    num_classes = logits.shape[0]
+                    for i in range(num_classes):
+                        class_logits = logits[i, :, :]
+                        print(f"[LOGIT RANGE] Class {i}: min={class_logits.min():.4f}, max={class_logits.max():.4f}, mean={class_logits.mean():.4f}, std={class_logits.std():.4f}")
+                    # Print one random logit vector (all classes) for a random pixel
+                    h, w = logits.shape[1], logits.shape[2]
+                    rand_h = np.random.randint(0, h)
+                    rand_w = np.random.randint(0, w)
+                    rand_logit_vec = logits[:, rand_h, rand_w]
+                    print(f"[LOGIT SAMPLE] Random pixel ({rand_h},{rand_w}): logits={rand_logit_vec}")
                 predicts = [torch.max(output, 1)[1].cpu().numpy() for output in outputs]
                 pred = predicts[0]
                 print(f"[DEBUG] Prediction mask shape: {pred.shape}")
